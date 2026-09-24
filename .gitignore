@@ -1,0 +1,9 @@
+__pycache__/
+*.pyc
+
+# Never commit credentials
+*secret*.json
+*credentials*.json
+aws-secret.json
+google-secret.json
+.env

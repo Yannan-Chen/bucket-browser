@@ -1,0 +1,920 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bucket Browser</title>
+<style>
+:root {
+  --bg: #ffffff; --panel: #f5f6f8; --text: #1d2026; --muted: #6b7280;
+  --border: #e3e5e9; --hover: #f0f3f8; --sel: #dbe8fd; --sel-border: #8db4f5;
+  --accent: #2563eb; --danger: #c02626; --folder: #d9a520; --img: #16a34a;
+  --shadow: 0 8px 28px rgba(0,0,0,.18);
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #17191d; --panel: #1f2227; --text: #e6e8eb; --muted: #9aa1ab;
+    --border: #2e323a; --hover: #252930; --sel: #1e3a66; --sel-border: #3d6bb3;
+    --accent: #60a5fa; --danger: #f87171; --folder: #e8b93a; --img: #4ade80;
+    --shadow: 0 8px 28px rgba(0,0,0,.5);
+  }
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; }
+body {
+  background: var(--bg); color: var(--text);
+  font: 14px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  display: flex; flex-direction: column; user-select: none;
+}
+button {
+  font: inherit; color: var(--text); background: var(--bg);
+  border: 1px solid var(--border); border-radius: 6px; padding: 5px 10px; cursor: pointer;
+}
+button:hover { background: var(--hover); }
+button:disabled { opacity: .45; cursor: default; }
+input {
+  font: inherit; color: var(--text); background: var(--bg);
+  border: 1px solid var(--border); border-radius: 6px; padding: 5px 9px; outline: none;
+}
+input:focus { border-color: var(--accent); }
+
+header { background: var(--panel); border-bottom: 1px solid var(--border); padding: 8px 12px; display: flex; flex-direction: column; gap: 8px; }
+.row { display: flex; gap: 6px; align-items: center; }
+#pathInput { flex: 1; min-width: 0; font-family: ui-monospace, Consolas, monospace; font-size: 13px; }
+#filter { width: 200px; }
+.crumbs { display: flex; flex-wrap: wrap; align-items: center; gap: 2px; flex: 1; min-width: 0; }
+.crumbs a { color: var(--text); text-decoration: none; padding: 2px 6px; border-radius: 4px; cursor: pointer; }
+.crumbs a:hover { background: var(--hover); }
+.crumbs a.drop { background: var(--sel); outline: 1px solid var(--sel-border); }
+.crumbs .sep { color: var(--muted); }
+.crumbs .root { font-family: ui-monospace, Consolas, monospace; font-size: 12px; color: var(--muted); }
+
+main { flex: 1; overflow: auto; position: relative; }
+table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+thead th {
+  position: sticky; top: 0; background: var(--bg); z-index: 1; text-align: left; font-weight: 600;
+  color: var(--muted); font-size: 12px; padding: 6px 12px; border-bottom: 1px solid var(--border); cursor: pointer;
+}
+thead th:hover { color: var(--text); }
+th.size, td.size { width: 120px; text-align: right; }
+th.type, td.type { width: 110px; }
+tbody tr { cursor: default; }
+tbody td { padding: 4px 12px; border-bottom: 1px solid transparent; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+tbody tr:hover td { background: var(--hover); }
+tbody tr.sel td { background: var(--sel); }
+tbody tr.cursor td:first-child { box-shadow: inset 2px 0 0 var(--accent); }
+tbody tr.cut { opacity: .45; }
+tbody tr.drop td { background: var(--sel); outline: 1px dashed var(--sel-border); }
+td.size, td.type { color: var(--muted); font-variant-numeric: tabular-nums; }
+.name { display: flex; align-items: center; gap: 8px; overflow: hidden; }
+.name span { overflow: hidden; text-overflow: ellipsis; }
+.ico { width: 18px; height: 18px; flex: none; }
+.ico.folder { color: var(--folder); } .ico.image { color: var(--img); } .ico.file { color: var(--muted); }
+.empty { padding: 48px; text-align: center; color: var(--muted); }
+.banner { padding: 6px 12px; background: var(--panel); color: var(--muted); border-bottom: 1px solid var(--border); font-size: 12px; }
+.banner.trash { color: var(--danger); }
+
+footer {
+  background: var(--panel); border-top: 1px solid var(--border); padding: 5px 12px;
+  display: flex; gap: 16px; align-items: center; font-size: 12px; color: var(--muted); min-height: 30px;
+}
+footer .grow { flex: 1; }
+.job { display: flex; align-items: center; gap: 6px; color: var(--text); }
+.bar { width: 120px; height: 5px; background: var(--border); border-radius: 3px; overflow: hidden; }
+.bar > div { height: 100%; background: var(--accent); width: 0; transition: width .2s; }
+.keys { cursor: help; text-decoration: underline dotted; }
+
+#toasts { position: fixed; bottom: 42px; right: 14px; display: flex; flex-direction: column; gap: 6px; z-index: 50; }
+.toast { background: var(--text); color: var(--bg); padding: 8px 12px; border-radius: 6px; box-shadow: var(--shadow); max-width: 440px; font-size: 13px; }
+.toast.err { background: var(--danger); color: #fff; }
+
+#menu { position: fixed; z-index: 40; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; box-shadow: var(--shadow); padding: 4px; min-width: 220px; display: none; }
+#menu div { padding: 6px 10px; border-radius: 5px; display: flex; justify-content: space-between; gap: 20px; cursor: pointer; }
+#menu div:hover { background: var(--hover); }
+#menu div.dis { opacity: .4; pointer-events: none; }
+#menu div.danger { color: var(--danger); }
+#menu kbd { color: var(--muted); font: 12px system-ui, sans-serif; }
+#menu hr { border: 0; border-top: 1px solid var(--border); margin: 4px 0; }
+
+#viewer { position: fixed; inset: 0; background: rgba(0,0,0,.92); z-index: 60; display: none; flex-direction: column; color: #eee; }
+#viewer .top { display: flex; align-items: center; gap: 10px; padding: 8px 12px; font-size: 13px; }
+#viewer .top .title { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#viewer button { background: rgba(255,255,255,.1); color: #eee; border-color: rgba(255,255,255,.2); }
+#viewer .stage { flex: 1; overflow: auto; display: flex; align-items: center; justify-content: center; position: relative; }
+#viewer .stage.actual { align-items: flex-start; justify-content: flex-start; }
+#viewer img { max-width: 100%; max-height: 100%; object-fit: contain; cursor: zoom-in; image-rendering: auto; }
+#viewer .stage.actual img { max-width: none; max-height: none; cursor: zoom-out; margin: auto; }
+#viewer .nav { position: absolute; top: 50%; transform: translateY(-50%); font-size: 26px; padding: 10px 14px; }
+#viewer .prev { left: 12px; } #viewer .next { right: 12px; }
+#viewer .msg { position: absolute; color: #aaa; }
+
+#editor { position: fixed; inset: 0; background: rgba(0,0,0,.35); z-index: 65; display: none; align-items: center; justify-content: center; }
+#editor .box { background: var(--bg); border: 1px solid var(--border); border-radius: 10px; box-shadow: var(--shadow); width: min(1000px, 94vw); height: min(760px, 90vh); display: flex; flex-direction: column; overflow: hidden; }
+#editor .top { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-bottom: 1px solid var(--border); background: var(--panel); }
+#editor .title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: ui-monospace, Consolas, monospace; font-size: 12px; }
+#editor .dirty { color: var(--accent); font-size: 12px; }
+#editor textarea { flex: 1; border: 0; outline: none; resize: none; padding: 12px; background: var(--bg); color: var(--text); font: 13px/1.5 ui-monospace, Consolas, monospace; tab-size: 4; user-select: text; }
+#editor .ok { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+#dialog { position: fixed; inset: 0; background: rgba(0,0,0,.35); z-index: 70; display: none; align-items: center; justify-content: center; }
+#dialog .box { background: var(--bg); border: 1px solid var(--border); border-radius: 10px; box-shadow: var(--shadow); padding: 18px; width: min(460px, 92vw); }
+#dialog h3 { margin: 0 0 8px; font-size: 15px; }
+#dialog p { margin: 0 0 12px; color: var(--muted); white-space: pre-wrap; word-break: break-all; }
+#dialog input { width: 100%; margin-bottom: 12px; }
+#dialog .btns { display: flex; justify-content: flex-end; gap: 8px; }
+#dialog .ok { background: var(--accent); color: #fff; border-color: var(--accent); }
+#dialog .ok.danger { background: var(--danger); border-color: var(--danger); }
+</style>
+</head>
+<body>
+<header>
+  <div class="row">
+    <button id="backBtn" title="Back (Alt+Left)">&#8592;</button>
+    <button id="upBtn" title="Parent folder (Backspace)">&#8593;</button>
+    <button id="refreshBtn" title="Refresh (F5)">&#8635;</button>
+    <input id="pathInput" list="recent" spellcheck="false" placeholder="nokura://bucket/path, gs://bucket/, s3://bucket/, file://C:/data ...">
+    <datalist id="recent"></datalist>
+    <button id="goBtn">Open</button>
+  </div>
+  <div class="row">
+    <nav class="crumbs" id="crumbs"></nav>
+    <button id="newFolderBtn" title="New folder (F7)">New folder</button>
+    <button id="newFileBtn" title="New text file (Shift+F7)">New text file</button>
+    <button id="trashBtn" title="Open .Trash">Trash</button>
+    <input id="filter" placeholder="Filter this folder (Ctrl+F)" spellcheck="false">
+  </div>
+</header>
+<div id="banner" class="banner" hidden></div>
+<main id="main">
+  <table>
+    <thead><tr>
+      <th data-sort="name">Name</th>
+      <th class="type" data-sort="type">Type</th>
+      <th class="size" data-sort="size">Size</th>
+    </tr></thead>
+    <tbody id="rows"></tbody>
+  </table>
+  <div id="empty" class="empty">Enter a bucket path above to start.</div>
+</main>
+<footer>
+  <span id="count"></span>
+  <span id="clip"></span>
+  <span class="grow"></span>
+  <span id="jobs"></span>
+  <span class="keys" title="Double-click / Enter: open folder, image, or text file
+F7: new folder    Shift+F7: new text file    Ctrl+S: save (text editor)
+Backspace: parent folder    Alt+Left/Right: back/forward
+Delete: move to .Trash (permanent when inside .Trash)
+Ctrl+Delete or Shift+Delete: delete permanently
+Ctrl+X then Ctrl+V: move    F2: rename
+Ctrl+A: select all    Ctrl+F: filter    F5: refresh
+Drag rows onto a folder or breadcrumb to move">Shortcuts</span>
+</footer>
+
+<div id="menu"></div>
+<div id="toasts"></div>
+
+<div id="viewer">
+  <div class="top">
+    <span class="title" id="vTitle"></span>
+    <span id="vIndex"></span>
+    <button id="vFit" title="Toggle fit / actual size (click image)">1:1</button>
+    <button id="vDownload">Download</button>
+    <button id="vClose" title="Close (Esc)">&#10005;</button>
+  </div>
+  <div class="stage" id="vStage">
+    <span class="msg" id="vMsg"></span>
+    <img id="vImg" alt="">
+    <button class="nav prev" id="vPrev" title="Previous (Left)">&#8249;</button>
+    <button class="nav next" id="vNext" title="Next (Right)">&#8250;</button>
+  </div>
+</div>
+
+<div id="editor"><div class="box">
+  <div class="top">
+    <span class="title" id="eTitle"></span>
+    <span class="dirty" id="eDirty"></span>
+    <button id="eSave" class="ok" title="Save (Ctrl+S)">Save</button>
+    <button id="eClose" title="Close (Esc)">Close</button>
+  </div>
+  <textarea id="eText" spellcheck="false"></textarea>
+</div></div>
+
+<div id="dialog"><div class="box">
+  <h3 id="dTitle"></h3>
+  <p id="dMsg"></p>
+  <input id="dInput" spellcheck="false">
+  <div class="btns"><button id="dCancel">Cancel</button><button id="dOk" class="ok">OK</button></div>
+</div></div>
+
+<script>
+"use strict";
+const TOKEN = "__TOKEN__";
+const TRASH = ".Trash";
+const IMAGE_EXT = /\.(jpe?g|png|gif|webp|bmp|svg)$/i;
+const TEXT_EXT = /\.(txt|md|markdown|json|jsonl|csv|tsv|log|ya?ml|toml|ini|cfg|conf|xml|html?|css|js|ts|py|sh|bat|ps1|r|m|c|h|cpp|java|sql|tex)$/i;
+const TEXT_NAMES = /^(info|provenance|readme|license|makefile)$/i;
+const $ = id => document.getElementById(id);
+
+const state = {
+  root: null, prefix: "", entries: [], view: [],
+  sel: new Set(), anchor: -1, cursor: -1,
+  sort: { key: "name", dir: 1 }, filter: "",
+  clipboard: null,       // { root, fromPrefix, items: [{path, dir}] }
+  loading: false,
+};
+
+// ------------------------------------------------------------ helpers
+const store = {
+  get(k, d) { try { const v = localStorage.getItem(k); return v === null ? d : JSON.parse(v); } catch { return d; } },
+  set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} },
+};
+function esc(s) { return s.replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])); }
+function fmtSize(n) {
+  if (n == null) return "";
+  const u = ["B", "KB", "MB", "GB", "TB"]; let i = 0;
+  while (n >= 1024 && i < u.length - 1) { n /= 1024; i++; }
+  return (i ? n.toFixed(n < 10 ? 1 : 0) : n) + " " + u[i];
+}
+function fileType(e) {
+  if (e.dir) return "Folder";
+  const m = e.name.match(/\.([^./]+)$/);
+  return m ? m[1].toUpperCase() : "File";
+}
+const isImage = e => !e.dir && IMAGE_EXT.test(e.name);
+const isText = e => !e.dir && (TEXT_EXT.test(e.name) || TEXT_NAMES.test(e.name));
+const fullPath = e => state.prefix + e.name;
+const inTrash = () => state.prefix === TRASH + "/" || state.prefix.startsWith(TRASH + "/");
+
+async function api(path, params = {}, body = null) {
+  const qs = new URLSearchParams(params).toString();
+  const res = await fetch(path + (qs ? "?" + qs : ""), {
+    method: body ? "POST" : "GET",
+    headers: { "X-Token": TOKEN, ...(body ? { "Content-Type": "application/json" } : {}) },
+    body: body ? JSON.stringify(body) : null,
+  });
+  let data;
+  try { data = await res.json(); } catch { data = { error: res.status + " " + res.statusText }; }
+  if (!res.ok || data.error && !data.state) throw new Error(data.error || res.statusText);
+  return data;
+}
+function fileUrl(path, download) {
+  const p = new URLSearchParams({ root: state.root, path, t: TOKEN });
+  if (download) p.set("download", "1");
+  return "/api/file?" + p;
+}
+
+function toast(msg, err) {
+  const t = document.createElement("div");
+  t.className = "toast" + (err ? " err" : "");
+  t.textContent = msg;
+  $("toasts").appendChild(t);
+  setTimeout(() => t.remove(), err ? 7000 : 3500);
+}
+
+// ------------------------------------------------------------ dialog
+function dialog({ title, message = "", input = null, okText = "OK", danger = false }) {
+  return new Promise(resolve => {
+    $("dTitle").textContent = title;
+    $("dMsg").textContent = message;
+    $("dMsg").hidden = !message;
+    const inp = $("dInput");
+    inp.hidden = input === null;
+    $("dOk").textContent = okText;
+    $("dOk").classList.toggle("danger", danger);
+    $("dialog").style.display = "flex";
+    const close = val => {
+      $("dialog").style.display = "none";
+      document.removeEventListener("keydown", onKey, true);
+      resolve(val);
+    };
+    const onKey = e => {
+      if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); close(null); }
+      else if (e.key === "Enter") { e.preventDefault(); e.stopPropagation(); close(input === null ? true : inp.value); }
+      else e.stopPropagation();
+    };
+    document.addEventListener("keydown", onKey, true);
+    $("dOk").onclick = () => close(input === null ? true : inp.value);
+    $("dCancel").onclick = () => close(null);
+    if (input !== null) {
+      inp.value = input;
+      setTimeout(() => {
+        inp.focus();
+        const dot = input.lastIndexOf(".");
+        inp.setSelectionRange(0, dot > 0 ? dot : input.length);
+      });
+    } else setTimeout(() => $("dOk").focus());
+  });
+}
+
+// ------------------------------------------------------------ navigation
+function setHash(root, prefix, replace) {
+  const h = "#" + new URLSearchParams({ root, prefix });
+  if (replace) history.replaceState(null, "", h); else if (location.hash !== h) location.hash = h;
+  else load();
+}
+function navigate(prefix) { setHash(state.root, prefix); }
+
+async function openPath(text) {
+  text = text.trim();
+  if (!text) return;
+  try {
+    const r = await api("/api/resolve", { path: text });
+    setHash(r.root, r.prefix);
+  } catch (e) { toast(e.message, true); }
+}
+
+async function load(keepSelection) {
+  const h = new URLSearchParams(location.hash.slice(1));
+  if (h.has("path")) { const p = h.get("path"); history.replaceState(null, "", location.pathname); return openPath(p); }
+  if (!h.has("root")) { render(); return; }
+  const root = h.get("root"), prefix = h.get("prefix") || "";
+  const changedDir = root !== state.root || prefix !== state.prefix;
+  state.root = root; state.prefix = prefix;
+  $("pathInput").value = root + prefix;
+  renderCrumbs();
+  if (changedDir) { state.filter = ""; $("filter").value = ""; }
+  state.loading = true;
+  $("empty").textContent = "Loading..."; $("empty").hidden = false; $("rows").innerHTML = "";
+  const prevSel = keepSelection && !changedDir ? new Set(state.sel) : new Set();
+  const prevCursorName = keepSelection && !changedDir ? state.view[state.cursor]?.name : null;
+  try {
+    const r = await api("/api/list", { root, prefix });
+    if (r.root !== state.root || r.prefix !== state.prefix) return; // stale response
+    state.entries = r.entries;
+    state.truncated = r.truncated;
+    addRecent(root);
+  } catch (e) {
+    state.entries = [];
+    toast(e.message, true);
+  } finally { state.loading = false; }
+  state.sel = new Set([...prevSel].filter(n => state.entries.some(e => e.name === n)));
+  buildView();
+  state.cursor = prevCursorName ? state.view.findIndex(e => e.name === prevCursorName) : (state.view.length ? 0 : -1);
+  state.anchor = state.cursor;
+  render();
+  if (changedDir) $("main").scrollTop = 0;
+}
+
+function addRecent(root) {
+  const list = store.get("recentRoots", []).filter(r => r !== root);
+  list.unshift(root);
+  store.set("recentRoots", list.slice(0, 15));
+  $("recent").innerHTML = list.slice(0, 15).map(r => `<option value="${esc(r)}">`).join("");
+}
+
+function parentPrefix(p) {
+  if (!p) return "";
+  const s = p.slice(0, -1);
+  const i = s.lastIndexOf("/");
+  return i < 0 ? "" : s.slice(0, i + 1);
+}
+
+// ------------------------------------------------------------ rendering
+function buildView() {
+  const f = state.filter.toLowerCase();
+  const { key, dir } = state.sort;
+  let v = state.entries.filter(e => !f || e.name.toLowerCase().includes(f));
+  const coll = new Intl.Collator(undefined, { numeric: true, sensitivity: "base" });
+  v.sort((a, b) => {
+    if (a.dir !== b.dir) return a.dir ? -1 : 1;
+    let c = 0;
+    if (key === "size") c = (a.size || 0) - (b.size || 0);
+    else if (key === "type") c = coll.compare(fileType(a), fileType(b));
+    if (!c) c = coll.compare(a.name, b.name);
+    return c * dir;
+  });
+  state.view = v;
+}
+
+const ICONS = {
+  folder: '<svg class="ico folder" viewBox="0 0 24 24" fill="currentColor"><path d="M10 4H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-8l-2-2z"/></svg>',
+  image: '<svg class="ico image" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>',
+  file: '<svg class="ico file" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>',
+};
+
+function isCut(e) {
+  const c = state.clipboard;
+  return c && c.root === state.root && c.fromPrefix === state.prefix && c.items.some(i => i.path === fullPath(e));
+}
+
+function render() {
+  const rows = state.view.map((e, i) => {
+    const cls = [state.sel.has(e.name) ? "sel" : "", i === state.cursor ? "cursor" : "", isCut(e) ? "cut" : ""].join(" ");
+    const icon = e.dir ? ICONS.folder : isImage(e) ? ICONS.image : ICONS.file;
+    const label = e.name === "" ? "(unnamed)" : esc(e.name);
+    return `<tr data-i="${i}" class="${cls}" draggable="true"><td><div class="name">${icon}<span title="${esc(e.name)}">${label}</span></div></td>` +
+      `<td class="type">${fileType(e)}</td><td class="size">${fmtSize(e.size)}</td></tr>`;
+  });
+  $("rows").innerHTML = rows.join("");
+  const emptyEl = $("empty");
+  if (!state.root) { emptyEl.textContent = "Enter a bucket path above to start."; emptyEl.hidden = false; }
+  else if (state.loading) emptyEl.hidden = false;
+  else if (!state.view.length) { emptyEl.textContent = state.filter ? "No matches." : "This folder is empty."; emptyEl.hidden = false; }
+  else emptyEl.hidden = true;
+
+  const banner = $("banner");
+  if (inTrash()) { banner.hidden = false; banner.className = "banner trash"; banner.textContent = "You are in .Trash. Delete here is permanent. Right-click an item to restore it to its original location."; }
+  else if (state.truncated) { banner.hidden = false; banner.className = "banner"; banner.textContent = "This folder is large; only the first 20,000 entries are shown."; }
+  else banner.hidden = true;
+
+  document.querySelectorAll("thead th").forEach(th => {
+    const k = th.dataset.sort;
+    th.textContent = { name: "Name", type: "Type", size: "Size" }[k] + (state.sort.key === k ? (state.sort.dir > 0 ? " \u25B2" : " \u25BC") : "");
+  });
+  updateStatus();
+}
+
+function updateStatus() {
+  const dirs = state.view.filter(e => e.dir).length;
+  const files = state.view.length - dirs;
+  let s = state.root ? `${dirs} folder${dirs === 1 ? "" : "s"}, ${files} file${files === 1 ? "" : "s"}` : "";
+  if (state.sel.size) {
+    const bytes = state.entries.filter(e => state.sel.has(e.name)).reduce((a, e) => a + (e.size || 0), 0);
+    s += ` \u00B7 ${state.sel.size} selected` + (bytes ? ` (${fmtSize(bytes)})` : "");
+  }
+  $("count").textContent = s;
+  const c = state.clipboard;
+  $("clip").textContent = c ? `${c.items.length} item${c.items.length === 1 ? "" : "s"} cut \u2014 Ctrl+V to move here, Esc to cancel` : "";
+  $("upBtn").disabled = !state.root || !state.prefix;
+}
+
+function renderCrumbs() {
+  const parts = state.prefix ? state.prefix.slice(0, -1).split("/") : [];
+  let html = `<a data-p="" class="root">${esc(state.root)}</a>`;
+  let acc = "";
+  for (const p of parts) {
+    acc += p + "/";
+    html += `<span class="sep">/</span><a data-p="${esc(acc)}">${p === "" ? "(unnamed)" : esc(p)}</a>`;
+  }
+  $("crumbs").innerHTML = html;
+}
+
+// Update only the classes on rows (fast path for selection changes).
+function refreshRowClasses() {
+  const trs = $("rows").children;
+  for (let i = 0; i < trs.length; i++) {
+    const e = state.view[i];
+    trs[i].classList.toggle("sel", state.sel.has(e.name));
+    trs[i].classList.toggle("cursor", i === state.cursor);
+    trs[i].classList.toggle("cut", !!isCut(e));
+  }
+  updateStatus();
+}
+function scrollToCursor() {
+  const tr = $("rows").children[state.cursor];
+  if (tr) tr.scrollIntoView({ block: "nearest" });
+}
+
+// ------------------------------------------------------------ selection
+function selectOnly(i) { state.sel = new Set(i >= 0 ? [state.view[i].name] : []); state.cursor = state.anchor = i; }
+function selectRange(i) {
+  const a = Math.max(0, state.anchor), [lo, hi] = a < i ? [a, i] : [i, a];
+  state.sel = new Set(state.view.slice(lo, hi + 1).map(e => e.name));
+  state.cursor = i;
+}
+function selectedItems() {
+  let names = [...state.sel];
+  if (!names.length && state.cursor >= 0) names = [state.view[state.cursor].name];
+  return state.entries.filter(e => names.includes(e.name)).map(e => ({ path: fullPath(e), dir: e.dir }));
+}
+
+$("rows").addEventListener("mousedown", ev => {
+  const tr = ev.target.closest("tr"); if (!tr) return;
+  const i = +tr.dataset.i, name = state.view[i].name;
+  if (ev.button === 2) { if (!state.sel.has(name)) selectOnly(i); refreshRowClasses(); return; }
+  if (ev.shiftKey) selectRange(i);
+  else if (ev.ctrlKey || ev.metaKey) {
+    state.sel.has(name) ? state.sel.delete(name) : state.sel.add(name);
+    state.cursor = state.anchor = i;
+  } else if (!state.sel.has(name) || state.sel.size === 1) selectOnly(i);
+  else { state.cursor = i; state.pendingSelectOnly = i; }  // allow dragging a multi-selection
+  refreshRowClasses();
+});
+$("rows").addEventListener("click", ev => {
+  const tr = ev.target.closest("tr");
+  if (tr && state.pendingSelectOnly === +tr.dataset.i && !ev.ctrlKey && !ev.shiftKey) { selectOnly(+tr.dataset.i); refreshRowClasses(); }
+  state.pendingSelectOnly = null;
+});
+$("rows").addEventListener("dblclick", ev => {
+  const tr = ev.target.closest("tr"); if (tr) openEntry(state.view[+tr.dataset.i]);
+});
+$("main").addEventListener("mousedown", ev => {
+  if (ev.button === 0 && !ev.target.closest("tr") && !ev.target.closest("thead")) { state.sel.clear(); refreshRowClasses(); }
+});
+document.querySelector("thead").addEventListener("click", ev => {
+  const k = ev.target.dataset.sort; if (!k) return;
+  state.sort = state.sort.key === k ? { key: k, dir: -state.sort.dir } : { key: k, dir: 1 };
+  const cur = state.view[state.cursor]?.name;
+  buildView();
+  state.cursor = state.anchor = state.view.findIndex(e => e.name === cur);
+  render();
+});
+
+function openEntry(e) {
+  if (!e) return;
+  if (e.dir) navigate(fullPath(e) + "/");
+  else if (isImage(e)) openViewer(e);
+  else if (isText(e)) openEditor(fullPath(e));
+  else toast(`No preview for ${fileType(e)} files. Right-click \u2192 Download.`);
+}
+
+// ------------------------------------------------------------ create
+function selectName(name) {
+  const i = state.view.findIndex(e => e.name === name);
+  if (i >= 0) { selectOnly(i); refreshRowClasses(); scrollToCursor(); }
+}
+function uniqueName(base, ext) {
+  const taken = new Set(state.entries.map(e => e.name));
+  let name = base + ext;
+  for (let n = 2; taken.has(name); n++) name = `${base} (${n})${ext}`;
+  return name;
+}
+function validName(name) {
+  if (!name) return false;
+  if (name.includes("/") || name.includes("\\") || name === "." || name === "..") { toast("Name cannot contain / or \\.", true); return false; }
+  return true;
+}
+async function newFolder() {
+  if (!state.root) return;
+  const name = (await dialog({ title: "New folder", input: uniqueName("New folder", ""), okText: "Create" }))?.trim();
+  if (!validName(name)) return;
+  try { await api("/api/mkdir", {}, { root: state.root, prefix: state.prefix, name }); }
+  catch (e) { toast(e.message, true); return; }
+  await load(true);
+  selectName(name);
+}
+async function newTextFile() {
+  if (!state.root) return;
+  const name = (await dialog({ title: "New text file", input: uniqueName("New Text Document", ".txt"), okText: "Create" }))?.trim();
+  if (!validName(name)) return;
+  const path = state.prefix + name;
+  try { await api("/api/write", {}, { root: state.root, path, content: "", create: true }); }
+  catch (e) { toast(e.message, true); return; }
+  await load(true);
+  selectName(name);
+  openEditor(path);
+}
+
+// ------------------------------------------------------------ text editor
+const editor = { path: null, root: null, crlf: false, saved: "" };
+const editorOpen = () => $("editor").style.display === "flex";
+const editorDirty = () => editorOpen() && $("eText").value !== editor.saved;
+async function openEditor(path) {
+  let r;
+  try { r = await api("/api/text", { root: state.root, path }); }
+  catch (e) { toast(e.message, true); return; }
+  Object.assign(editor, { path, root: state.root, crlf: r.crlf, saved: r.content });
+  $("eTitle").textContent = state.root + path;
+  $("eText").value = r.content;
+  $("eDirty").textContent = "";
+  $("editor").style.display = "flex";
+  $("eText").focus();
+  $("eText").setSelectionRange(0, 0);
+  $("eText").scrollTop = 0;
+}
+async function saveEditor() {
+  const content = $("eText").value;
+  $("eDirty").textContent = "Saving...";
+  try { await api("/api/write", {}, { root: editor.root, path: editor.path, content, crlf: editor.crlf }); }
+  catch (e) { $("eDirty").textContent = "Unsaved changes"; toast(e.message, true); return false; }
+  editor.saved = content;
+  $("eDirty").textContent = "Saved";
+  if (editor.root === state.root) load(true);
+  return true;
+}
+async function closeEditor() {
+  if (editorDirty()) {
+    const ok = await dialog({ title: "Discard changes?", message: `${editor.path.split("/").pop()} has unsaved changes.`, okText: "Discard", danger: true });
+    if (!ok) { $("eText").focus(); return; }
+  }
+  $("editor").style.display = "none";
+}
+$("eText").addEventListener("input", () => { $("eDirty").textContent = editorDirty() ? "Unsaved changes" : ""; });
+$("eText").addEventListener("keydown", ev => {
+  if (ev.key === "Tab") {   // insert a tab instead of moving focus
+    ev.preventDefault();
+    document.execCommand("insertText", false, "\t");
+  }
+});
+$("eSave").onclick = saveEditor;
+$("eClose").onclick = closeEditor;
+window.addEventListener("beforeunload", ev => { if (editorDirty()) { ev.preventDefault(); ev.returnValue = ""; } });
+
+// ------------------------------------------------------------ operations
+async function runOp(body, label) {
+  let job;
+  try { job = await api("/api/op", {}, { root: state.root, ...body }); }
+  catch (e) { toast(e.message, true); return false; }
+  const res = await watchJob(job.job, label);
+  if (res.state === "conflict") {
+    const ex = (res.conflicts || []).slice(0, 5).join("\n");
+    const ok = await dialog({ title: "Destination already exists", message: `${ex}\n\nOverwrite existing objects?`, okText: "Overwrite", danger: true });
+    if (ok) return runOp({ ...body, overwrite: true }, label);
+    return false;
+  }
+  if (res.state === "error") { toast(res.error, true); await load(true); return false; }
+  toast(`${label}: ${res.message}`);
+  await load(true);
+  return true;
+}
+
+const activeJobs = new Map();
+function renderJobs() {
+  $("jobs").innerHTML = [...activeJobs.values()].map(j => {
+    const pct = j.total ? Math.round(100 * j.done / j.total) : 0;
+    const txt = j.total ? `${j.done}/${j.total}` : j.message;
+    return `<span class="job">${esc(j.label)} <span class="bar"><div style="width:${pct}%"></div></span> ${esc(txt)}</span>`;
+  }).join("");
+}
+async function watchJob(id, label) {
+  activeJobs.set(id, { label, done: 0, total: null, message: "Starting..." });
+  renderJobs();
+  try {
+    for (;;) {
+      await new Promise(r => setTimeout(r, 350));
+      let j;
+      try { j = await api("/api/job", { id }); } catch (e) { return { state: "error", error: e.message }; }
+      activeJobs.set(id, { label, ...j });
+      renderJobs();
+      if (j.state !== "running") return j;
+    }
+  } finally { activeJobs.delete(id); renderJobs(); }
+}
+
+function describe(items) {
+  return items.length === 1 ? `"${items[0].path.split("/").pop()}"${items[0].dir ? " (folder)" : ""}` : `${items.length} items`;
+}
+
+async function trashSelected() {
+  const items = selectedItems(); if (!items.length) return;
+  if (inTrash()) return deleteSelected();
+  await runOp({ op: "trash", items }, "Move to Trash");
+}
+async function deleteSelected() {
+  const items = selectedItems(); if (!items.length) return;
+  const folders = items.filter(i => i.dir).length;
+  const ok = await dialog({
+    title: "Delete permanently?",
+    message: `${describe(items)} will be permanently deleted${folders ? ", including everything inside the folder" + (folders > 1 ? "s" : "") : ""}. This cannot be undone.`,
+    okText: "Delete permanently", danger: true,
+  });
+  if (ok) { await runOp({ op: "delete", items }, "Delete"); state.sel.clear(); }
+}
+function cutSelected() {
+  const items = selectedItems(); if (!items.length) return;
+  state.clipboard = { root: state.root, fromPrefix: state.prefix, items };
+  refreshRowClasses();
+  toast(`Cut ${describe(items)}. Go to the destination folder and press Ctrl+V.`);
+}
+async function paste() {
+  const c = state.clipboard; if (!c) return;
+  if (c.root !== state.root) { toast("Can only move within the same bucket.", true); return; }
+  if (c.fromPrefix === state.prefix) { toast("Items are already in this folder."); return; }
+  await moveItems(c.items, state.prefix);
+}
+async function moveItems(items, dest) {
+  if (items.some(i => i.dir && (dest + "/").startsWith(i.path + "/"))) { toast("Cannot move a folder into itself.", true); return; }
+  const ok = await runOp({ op: "move", items, dest }, "Move");
+  if (ok && state.clipboard && state.clipboard.items === items) state.clipboard = null;
+  updateStatus();
+}
+async function renameSelected() {
+  const items = selectedItems(); if (items.length !== 1) return;
+  const old = items[0].path.split("/").pop();
+  const name = await dialog({ title: "Rename", input: old, okText: "Rename" });
+  if (!name || name === old) return;
+  if (name.includes("/")) { toast("Name cannot contain '/'.", true); return; }
+  const parent = state.prefix;
+  if (await runOp({ op: "rename", items, name }, "Rename")) {
+    state.sel = new Set([name]);
+    if (parent === state.prefix) { state.cursor = state.view.findIndex(e => e.name === name); refreshRowClasses(); }
+  }
+}
+async function restoreSelected() {
+  const items = selectedItems().filter(i => i.path.startsWith(TRASH + "/"));
+  if (items.length) await runOp({ op: "restore", items }, "Restore");
+}
+function copyPath() {
+  const items = selectedItems();
+  const text = items.length ? items.map(i => state.root + i.path + (i.dir ? "/" : "")).join("\n") : state.root + state.prefix;
+  navigator.clipboard.writeText(text).then(() => toast("Path copied."), () => toast(text));
+}
+function download() {
+  for (const i of selectedItems().filter(i => !i.dir)) {
+    const a = document.createElement("a"); a.href = fileUrl(i.path, true); a.click();
+  }
+}
+
+// ------------------------------------------------------------ drag & drop
+let dragItems = null;
+$("rows").addEventListener("dragstart", ev => {
+  const tr = ev.target.closest("tr"); if (!tr) return;
+  state.pendingSelectOnly = null;
+  dragItems = selectedItems();
+  ev.dataTransfer.effectAllowed = "move";
+  ev.dataTransfer.setData("text/plain", dragItems.map(i => i.path).join("\n"));
+});
+$("rows").addEventListener("dragend", () => { dragItems = null; clearDrop(); });
+function dropTarget(ev) {
+  const tr = ev.target.closest("tr");
+  if (tr) { const e = state.view[+tr.dataset.i]; return e.dir && !state.sel.has(e.name) ? { el: tr, dest: fullPath(e) + "/" } : null; }
+  const a = ev.target.closest(".crumbs a");
+  if (a && a.dataset.p !== state.prefix) return { el: a, dest: a.dataset.p };
+  return null;
+}
+function clearDrop() { document.querySelectorAll(".drop").forEach(x => x.classList.remove("drop")); }
+for (const el of [$("rows"), $("crumbs")]) {
+  el.addEventListener("dragover", ev => {
+    if (!dragItems) return;
+    const t = dropTarget(ev); clearDrop();
+    if (t) { ev.preventDefault(); t.el.classList.add("drop"); }
+  });
+  el.addEventListener("drop", ev => {
+    const t = dropTarget(ev); clearDrop();
+    if (!t || !dragItems) return;
+    ev.preventDefault();
+    const items = dragItems; dragItems = null;
+    moveItems(items, t.dest);
+  });
+}
+
+// ------------------------------------------------------------ context menu
+function showMenu(x, y) {
+  const items = selectedItems(), n = items.length;
+  const one = n === 1 ? state.entries.find(e => fullPath(e) === items[0].path) : null;
+  const trash = inTrash();
+  const entries = [
+    ["Open", "Enter", () => openEntry(one), !one || (!one.dir && !isImage(one) && !isText(one))],
+    ["Download", "", download, !items.some(i => !i.dir)],
+    ["Copy path", "", copyPath, false],
+    "-",
+    ["Cut", "Ctrl+X", cutSelected, !n],
+    ["Paste here", "Ctrl+V", paste, !state.clipboard],
+    ["Rename", "F2", renameSelected, n !== 1],
+    "-",
+    ["New folder", "F7", newFolder, false],
+    ["New text file", "Shift+F7", newTextFile, false],
+    "-",
+    ...(trash ? [["Restore", "", restoreSelected, !n || state.prefix === ""]] : [["Move to Trash", "Del", trashSelected, !n]]),
+    ["Delete permanently", "Ctrl+Del", deleteSelected, !n, "danger"],
+  ];
+  const m = $("menu");
+  m.innerHTML = "";
+  for (const e of entries) {
+    if (e === "-") { m.appendChild(document.createElement("hr")); continue; }
+    const [label, key, fn, disabled, cls] = e;
+    const d = document.createElement("div");
+    d.className = (disabled ? "dis " : "") + (cls || "");
+    d.innerHTML = `<span>${label}</span><kbd>${key}</kbd>`;
+    d.onclick = () => { hideMenu(); fn(); };
+    m.appendChild(d);
+  }
+  m.style.display = "block";
+  const r = m.getBoundingClientRect();
+  m.style.left = Math.min(x, innerWidth - r.width - 4) + "px";
+  m.style.top = Math.min(y, innerHeight - r.height - 4) + "px";
+}
+function hideMenu() { $("menu").style.display = "none"; }
+$("main").addEventListener("contextmenu", ev => {
+  if (!state.root) return;
+  ev.preventDefault();
+  if (!ev.target.closest("tr")) { state.sel.clear(); refreshRowClasses(); }
+  showMenu(ev.clientX, ev.clientY);
+});
+document.addEventListener("mousedown", ev => { if (!ev.target.closest("#menu")) hideMenu(); });
+
+// ------------------------------------------------------------ image viewer
+const viewer = { list: [], i: 0 };
+function openViewer(e) {
+  viewer.list = state.view.filter(isImage);
+  viewer.i = Math.max(0, viewer.list.indexOf(e));
+  $("viewer").style.display = "flex";
+  $("vStage").classList.remove("actual");
+  showImage();
+}
+function showImage() {
+  const e = viewer.list[viewer.i]; if (!e) return;
+  const img = $("vImg");
+  $("vTitle").textContent = state.root + fullPath(e);
+  $("vIndex").textContent = `${viewer.i + 1} / ${viewer.list.length}` + (e.size != null ? ` \u00B7 ${fmtSize(e.size)}` : "");
+  $("vMsg").textContent = "Loading...";
+  img.style.visibility = "hidden";
+  img.onload = () => {
+    $("vMsg").textContent = "";
+    img.style.visibility = "visible";
+    $("vIndex").textContent += ` \u00B7 ${img.naturalWidth}\u00D7${img.naturalHeight}`;
+    const nx = viewer.list[viewer.i + 1];   // preload the next one
+    if (nx) new Image().src = fileUrl(fullPath(nx));
+  };
+  img.onerror = () => { $("vMsg").textContent = "Could not load image."; };
+  img.src = fileUrl(fullPath(e));
+  $("vPrev").disabled = viewer.i === 0;
+  $("vNext").disabled = viewer.i >= viewer.list.length - 1;
+  // keep the browser selection in sync with the viewer
+  const idx = state.view.indexOf(e);
+  if (idx >= 0) { selectOnly(idx); refreshRowClasses(); scrollToCursor(); }
+}
+function closeViewer() { $("viewer").style.display = "none"; $("vImg").removeAttribute("src"); }
+const viewerOpen = () => $("viewer").style.display === "flex";
+function step(d) { const n = viewer.i + d; if (n >= 0 && n < viewer.list.length) { viewer.i = n; showImage(); } }
+$("vPrev").onclick = () => step(-1);
+$("vNext").onclick = () => step(1);
+$("vClose").onclick = closeViewer;
+$("vFit").onclick = $("vImg").onclick = () => $("vStage").classList.toggle("actual");
+$("vDownload").onclick = () => { const e = viewer.list[viewer.i]; if (e) { const a = document.createElement("a"); a.href = fileUrl(fullPath(e), true); a.click(); } };
+$("vStage").addEventListener("click", ev => { if (ev.target === $("vStage")) closeViewer(); });
+
+// ------------------------------------------------------------ keyboard
+document.addEventListener("keydown", ev => {
+  const ctrl = ev.ctrlKey || ev.metaKey;
+  if (editorOpen()) {
+    if (ctrl && ev.key.toLowerCase() === "s") { ev.preventDefault(); saveEditor(); }
+    else if (ev.key === "Escape") { ev.preventDefault(); closeEditor(); }
+    return;   // everything else goes to the textarea
+  }
+  if (ctrl && ev.key.toLowerCase() === "s") { ev.preventDefault(); return; }  // no browser "save page"
+  if (viewerOpen()) {
+    if (ev.key === "Escape") closeViewer();
+    else if (ev.key === "ArrowLeft") step(-1);
+    else if (ev.key === "ArrowRight") step(1);
+    else if (ev.key === "Home") { viewer.i = 0; showImage(); }
+    else if (ev.key === "End") { viewer.i = viewer.list.length - 1; showImage(); }
+    else return;
+    ev.preventDefault(); return;
+  }
+  const inInput = ev.target.tagName === "INPUT";
+  if (ev.key === "F5" || (ctrl && ev.key.toLowerCase() === "r")) { ev.preventDefault(); load(true); return; }
+  if (ctrl && ev.key.toLowerCase() === "f") { ev.preventDefault(); $("filter").focus(); $("filter").select(); return; }
+  if (ev.altKey && ev.key === "ArrowLeft") { ev.preventDefault(); history.back(); return; }
+  if (ev.altKey && ev.key === "ArrowRight") { ev.preventDefault(); history.forward(); return; }
+  if (inInput) {
+    if (ev.target.id === "filter" && (ev.key === "ArrowDown" || ev.key === "Escape")) {
+      if (ev.key === "Escape") { $("filter").value = ""; onFilter(); }
+      ev.target.blur(); ev.preventDefault();
+    }
+    return;
+  }
+  if (!state.root) return;
+  const n = state.view.length;
+  const move = i => {
+    i = Math.max(0, Math.min(n - 1, i));
+    if (ev.shiftKey) selectRange(i); else selectOnly(i);
+    refreshRowClasses(); scrollToCursor();
+  };
+  const page = Math.max(1, Math.floor($("main").clientHeight / 30) - 1);
+  switch (true) {
+    case ev.key === "ArrowDown": move(state.cursor + 1); break;
+    case ev.key === "ArrowUp": move(state.cursor - 1); break;
+    case ev.key === "PageDown": move(state.cursor + page); break;
+    case ev.key === "PageUp": move(state.cursor - page); break;
+    case ev.key === "Home": move(0); break;
+    case ev.key === "End": move(n - 1); break;
+    case ev.key === "Enter": openEntry(state.view[state.cursor]); break;
+    case ev.key === "Backspace" || (ev.altKey && ev.key === "ArrowUp"): if (state.prefix) navigate(parentPrefix(state.prefix)); break;
+    case ev.key === "Delete" && (ctrl || ev.shiftKey): deleteSelected(); break;
+    case ev.key === "Delete": trashSelected(); break;
+    case ev.key === "F7" && ev.shiftKey: newTextFile(); break;
+    case ev.key === "F7": newFolder(); break;
+    case ctrl && ev.key.toLowerCase() === "x": cutSelected(); break;
+    case ctrl && ev.key.toLowerCase() === "v": paste(); break;
+    case ctrl && ev.key.toLowerCase() === "a": state.sel = new Set(state.view.map(e => e.name)); refreshRowClasses(); break;
+    case ctrl && ev.key.toLowerCase() === "c": copyPath(); break;
+    case ev.key === "F2": renameSelected(); break;
+    case ev.key === "Escape":
+      if (state.clipboard) { state.clipboard = null; toast("Cut cancelled."); } else state.sel.clear();
+      refreshRowClasses(); break;
+    default: return;
+  }
+  ev.preventDefault();
+});
+
+// ------------------------------------------------------------ wiring
+function onFilter() {
+  state.filter = $("filter").value;
+  buildView();
+  state.sel = new Set([...state.sel].filter(nm => state.view.some(e => e.name === nm)));
+  state.cursor = state.anchor = state.view.length ? 0 : -1;
+  render();
+}
+$("filter").addEventListener("input", onFilter);
+$("goBtn").onclick = () => openPath($("pathInput").value);
+$("pathInput").addEventListener("keydown", ev => { if (ev.key === "Enter") { openPath(ev.target.value); ev.target.blur(); } });
+$("upBtn").onclick = () => state.prefix && navigate(parentPrefix(state.prefix));
+$("backBtn").onclick = () => history.back();
+$("refreshBtn").onclick = () => load(true);
+$("trashBtn").onclick = () => state.root && navigate(TRASH + "/");
+$("newFolderBtn").onclick = newFolder;
+$("newFileBtn").onclick = newTextFile;
+$("crumbs").addEventListener("click", ev => { const a = ev.target.closest("a"); if (a) navigate(a.dataset.p); });
+window.addEventListener("hashchange", () => load());
+
+{
+  const recent = store.get("recentRoots", []);
+  $("recent").innerHTML = recent.map(r => `<option value="${esc(r)}">`).join("");
+  if (!location.hash && recent[0]) $("pathInput").value = recent[0];
+}
+load();
+</script>
+</body>
+</html>

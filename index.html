@@ -29,6 +29,7 @@ body {
 button {
   font: inherit; color: var(--text); background: var(--bg);
   border: 1px solid var(--border); border-radius: 6px; padding: 5px 10px; cursor: pointer;
+  white-space: nowrap;
 }
 button:hover { background: var(--hover); }
 button:disabled { opacity: .45; cursor: default; }
@@ -40,9 +41,10 @@ input:focus { border-color: var(--accent); }
 
 header { background: var(--panel); border-bottom: 1px solid var(--border); padding: 8px 12px; display: flex; flex-direction: column; gap: 8px; }
 .row { display: flex; gap: 6px; align-items: center; }
+.row.tools { flex-wrap: wrap; }
 #pathInput { flex: 1; min-width: 0; font-family: ui-monospace, Consolas, monospace; font-size: 13px; }
-#filter { width: 200px; }
-.crumbs { display: flex; flex-wrap: wrap; align-items: center; gap: 2px; flex: 1; min-width: 0; }
+#filter { flex: 0 1 200px; min-width: 120px; }
+.crumbs { display: flex; flex-wrap: wrap; align-items: center; gap: 2px; flex: 1 1 240px; min-width: 0; }
 .crumbs a { color: var(--text); text-decoration: none; padding: 2px 6px; border-radius: 4px; cursor: pointer; }
 .crumbs a:hover { background: var(--hover); }
 .crumbs a.drop { background: var(--sel); outline: 1px solid var(--sel-border); }
@@ -76,12 +78,23 @@ td.size, td.type { color: var(--muted); font-variant-numeric: tabular-nums; }
 
 footer {
   background: var(--panel); border-top: 1px solid var(--border); padding: 5px 12px;
-  display: flex; gap: 16px; align-items: center; font-size: 12px; color: var(--muted); min-height: 30px;
+  display: flex; flex-wrap: wrap; gap: 4px 16px; align-items: center; font-size: 12px; color: var(--muted); min-height: 30px;
 }
 footer .grow { flex: 1; }
-.job { display: flex; align-items: center; gap: 6px; color: var(--text); }
-.bar { width: 120px; height: 5px; background: var(--border); border-radius: 3px; overflow: hidden; }
-.bar > div { height: 100%; background: var(--accent); width: 0; transition: width .2s; }
+#jobPanel { position: fixed; left: 14px; bottom: 42px; z-index: 45; display: flex; flex-direction: column; gap: 8px; width: min(420px, calc(100vw - 28px)); }
+.jobcard { background: var(--bg); border: 1px solid var(--border); border-radius: 10px; box-shadow: var(--shadow); padding: 10px 12px; display: flex; flex-direction: column; gap: 7px; }
+.jhead { display: flex; align-items: center; gap: 10px; }
+.jlabel { flex: 1; min-width: 0; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.jhead button { padding: 3px 10px; font-size: 12px; }
+.jstat { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.jtip { font-size: 12px; color: var(--danger); }
+.bar { height: 6px; background: var(--border); border-radius: 3px; overflow: hidden; }
+.bar > div { height: 100%; background: var(--accent); width: 0; transition: width .3s; }
+.bar.growing > div {
+  background-image: linear-gradient(45deg, rgba(255,255,255,.35) 25%, transparent 25%, transparent 50%, rgba(255,255,255,.35) 50%, rgba(255,255,255,.35) 75%, transparent 75%);
+  background-size: 16px 16px; animation: stripes .8s linear infinite;
+}
+@keyframes stripes { to { background-position: 16px 0; } }
 .keys { cursor: help; text-decoration: underline dotted; }
 
 #toasts { position: fixed; bottom: 42px; right: 14px; display: flex; flex-direction: column; gap: 6px; z-index: 50; }
@@ -119,7 +132,7 @@ footer .grow { flex: 1; }
 #dialog { position: fixed; inset: 0; background: rgba(0,0,0,.35); z-index: 70; display: none; align-items: center; justify-content: center; }
 #dialog .box { background: var(--bg); border: 1px solid var(--border); border-radius: 10px; box-shadow: var(--shadow); padding: 18px; width: min(460px, 92vw); }
 #dialog h3 { margin: 0 0 8px; font-size: 15px; }
-#dialog p { margin: 0 0 12px; color: var(--muted); white-space: pre-wrap; word-break: break-all; }
+#dialog p { margin: 0 0 12px; color: var(--muted); white-space: pre-wrap; overflow-wrap: anywhere; }
 #dialog input { width: 100%; margin-bottom: 12px; }
 #dialog .btns { display: flex; justify-content: flex-end; gap: 8px; }
 #dialog .ok { background: var(--accent); color: #fff; border-color: var(--accent); }
@@ -136,7 +149,7 @@ footer .grow { flex: 1; }
     <datalist id="recent"></datalist>
     <button id="goBtn">Open</button>
   </div>
-  <div class="row">
+  <div class="row tools">
     <nav class="crumbs" id="crumbs"></nav>
     <button id="newFolderBtn" title="New folder (F7)">New folder</button>
     <button id="newFileBtn" title="New text file (Shift+F7)">New text file</button>
@@ -172,6 +185,7 @@ Drag rows onto a folder or breadcrumb to move">Shortcuts</span>
 </footer>
 
 <div id="menu"></div>
+<div id="jobPanel"></div>
 <div id="toasts"></div>
 
 <div id="viewer">
@@ -204,7 +218,7 @@ Drag rows onto a folder or breadcrumb to move">Shortcuts</span>
   <h3 id="dTitle"></h3>
   <p id="dMsg"></p>
   <input id="dInput" spellcheck="false">
-  <div class="btns"><button id="dCancel">Cancel</button><button id="dOk" class="ok">OK</button></div>
+  <div class="btns"><button id="dCancel">Cancel</button><button id="dAlt" hidden></button><button id="dOk" class="ok">OK</button></div>
 </div></div>
 
 <script>
@@ -246,12 +260,13 @@ const isText = e => !e.dir && (TEXT_EXT.test(e.name) || TEXT_NAMES.test(e.name))
 const fullPath = e => state.prefix + e.name;
 const inTrash = () => state.prefix === TRASH + "/" || state.prefix.startsWith(TRASH + "/");
 
-async function api(path, params = {}, body = null) {
+async function api(path, params = {}, body = null, signal = undefined) {
   const qs = new URLSearchParams(params).toString();
   const res = await fetch(path + (qs ? "?" + qs : ""), {
     method: body ? "POST" : "GET",
     headers: { "X-Token": TOKEN, ...(body ? { "Content-Type": "application/json" } : {}) },
     body: body ? JSON.stringify(body) : null,
+    signal,
   });
   let data;
   try { data = await res.json(); } catch { data = { error: res.status + " " + res.statusText }; }
@@ -273,7 +288,9 @@ function toast(msg, err) {
 }
 
 // ------------------------------------------------------------ dialog
-function dialog({ title, message = "", input = null, okText = "OK", danger = false }) {
+// Resolves to true (OK), "alt" (the optional middle button), the input's
+// text (when `input` is given), or null (Cancel / Esc).
+function dialog({ title, message = "", input = null, okText = "OK", altText = null, danger = false }) {
   return new Promise(resolve => {
     $("dTitle").textContent = title;
     $("dMsg").textContent = message;
@@ -282,6 +299,9 @@ function dialog({ title, message = "", input = null, okText = "OK", danger = fal
     inp.hidden = input === null;
     $("dOk").textContent = okText;
     $("dOk").classList.toggle("danger", danger);
+    $("dAlt").hidden = !altText;
+    $("dAlt").textContent = altText || "";
+    $("dAlt").onclick = () => close("alt");
     $("dialog").style.display = "flex";
     const close = val => {
       $("dialog").style.display = "none";
@@ -290,7 +310,13 @@ function dialog({ title, message = "", input = null, okText = "OK", danger = fal
     };
     const onKey = e => {
       if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); close(null); }
-      else if (e.key === "Enter") { e.preventDefault(); e.stopPropagation(); close(input === null ? true : inp.value); }
+      else if (e.key === "Enter") {
+        e.preventDefault(); e.stopPropagation();
+        const focused = document.activeElement;
+        if (focused === $("dAlt")) close("alt");
+        else if (focused === $("dCancel")) close(null);
+        else close(input === null ? true : inp.value);
+      }
       else e.stopPropagation();
     };
     document.addEventListener("keydown", onKey, true);
@@ -303,7 +329,7 @@ function dialog({ title, message = "", input = null, okText = "OK", danger = fal
         const dot = input.lastIndexOf(".");
         inp.setSelectionRange(0, dot > 0 ? dot : input.length);
       });
-    } else setTimeout(() => $("dOk").focus());
+    } else setTimeout(() => (altText ? $("dAlt") : $("dOk")).focus());   // the safe choice gets Enter
   });
 }
 
@@ -338,16 +364,21 @@ async function load(keepSelection) {
   $("empty").textContent = "Loading..."; $("empty").hidden = false; $("rows").innerHTML = "";
   const prevSel = keepSelection && !changedDir ? new Set(state.sel) : new Set();
   const prevCursorName = keepSelection && !changedDir ? state.view[state.cursor]?.name : null;
+  // Opening another folder abandons a listing that is still loading, so fast
+  // clicking never queues up behind slow requests.
+  if (state.listAbort) state.listAbort.abort();
+  const ctrl = state.listAbort = new AbortController();
   try {
-    const r = await api("/api/list", { root, prefix });
+    const r = await api("/api/list", { root, prefix }, null, ctrl.signal);
     if (r.root !== state.root || r.prefix !== state.prefix) return; // stale response
     state.entries = r.entries;
     state.truncated = r.truncated;
     addRecent(root);
   } catch (e) {
+    if (e.name === "AbortError") return;   // superseded by a newer navigation
     state.entries = [];
     toast(e.message, true);
-  } finally { state.loading = false; }
+  } finally { if (state.listAbort === ctrl) state.loading = false; }
   state.sel = new Set([...prevSel].filter(n => state.entries.some(e => e.name === n)));
   buildView();
   state.cursor = prevCursorName ? state.view.findIndex(e => e.name === prevCursorName) : (state.view.length ? 0 : -1);
@@ -602,44 +633,98 @@ $("eClose").onclick = closeEditor;
 window.addEventListener("beforeunload", ev => { if (editorDirty()) { ev.preventDefault(); ev.returnValue = ""; } });
 
 // ------------------------------------------------------------ operations
-async function runOp(body, label) {
+async function runOp(body, verb) {
+  const label = verb + " " + describe(body.items) + (body.dest !== undefined ? ` → /${body.dest}` : "");
   let job;
-  try { job = await api("/api/op", {}, { root: state.root, ...body }); }
+  try { job = await api("/api/op", {}, { root: state.root, label, ...body }); }
   catch (e) { toast(e.message, true); return false; }
-  const res = await watchJob(job.job, label);
+  const res = await watchJob(job.job);
   if (res.state === "conflict") {
-    const ex = (res.conflicts || []).slice(0, 5).join("\n");
-    const ok = await dialog({ title: "Destination already exists", message: `${ex}\n\nOverwrite existing objects?`, okText: "Overwrite", danger: true });
-    if (ok) return runOp({ ...body, overwrite: true }, label);
+    // Folders merge by themselves; this only comes up when some files have the same name.
+    const n = res.nconflicts || (res.conflicts || []).length;
+    const ex = (res.conflicts || []).map(p => "  " + p).join("\n") + (n > 5 ? "\n  ..." : "");
+    const choice = await dialog({
+      title: `${fmtInt(n)} file${n === 1 ? " has" : "s have"} the same name as ${n === 1 ? "a file" : "files"} already there`,
+      message: `${ex}\n\nFiles with different names are merged either way. For ${n === 1 ? "this one" : "these"}: ` +
+        `replace the ${n === 1 ? "copy" : "copies"} at the destination, or skip ${n === 1 ? "it" : "them"} ` +
+        `(${n === 1 ? "it stays" : "they stay"} in the original folder)?`,
+      okText: "Replace", altText: `Skip ${n === 1 ? "it" : "these"}`, danger: true,
+    });
+    if (choice === true) return runOp({ ...body, on_collision: "replace" }, verb);
+    if (choice === "alt") return runOp({ ...body, on_collision: "skip" }, verb);
     return false;
   }
-  if (res.state === "error") { toast(res.error, true); await load(true); return false; }
-  toast(`${label}: ${res.message}`);
+  return finishJob(res);
+}
+async function finishJob(res) {
+  if (res.state === "error") toast(res.error, true);
+  else toast(`${res.label}: ${res.message}`, res.state === "cancelled");
   await load(true);
-  return true;
+  return res.state === "done";
 }
 
+// Progress panel: one card per running task, polled from the server.
 const activeJobs = new Map();
+const fmtInt = n => (n || 0).toLocaleString();
+function fmtDuration(s) {
+  if (s == null || !isFinite(s)) return "";
+  if (s < 60) return `${Math.max(1, Math.round(s))} s`;
+  if (s < 3600) return `${Math.floor(s / 60)} min ${Math.round(s % 60)} s`;
+  return `${Math.floor(s / 3600)} h ${Math.round((s % 3600) / 60)} min`;
+}
+function jobStatus(j) {
+  if (j.cancelling) return "Cancelling — finishing requests already in flight...";
+  if (!j.found && j.listing) return `${j.phase || "Starting"}...`;
+  const verb = j.op === "delete" ? "deleted" : "moved";
+  let s = `${fmtInt(j.done)} of ${fmtInt(j.found)}${j.listing ? "+ (still listing)" : ""} ${verb}`;
+  if (j.rate) s += ` · ${fmtInt(Math.round(j.rate))}/s`;
+  if (j.eta != null && j.done < j.found) s += ` · about ${fmtDuration(j.eta)} left`;
+  if (j.skipped) s += ` · ${fmtInt(j.skipped)} skipped`;
+  if (j.failed) s += ` · ${fmtInt(j.failed)} failed`;
+  if (j.throttled) s += " · slowed while you browse";
+  return s;
+}
 function renderJobs() {
-  $("jobs").innerHTML = [...activeJobs.values()].map(j => {
-    const pct = j.total ? Math.round(100 * j.done / j.total) : 0;
-    const txt = j.total ? `${j.done}/${j.total}` : j.message;
-    return `<span class="job">${esc(j.label)} <span class="bar"><div style="width:${pct}%"></div></span> ${esc(txt)}</span>`;
+  const jobs = [...activeJobs.values()];
+  $("jobs").textContent = jobs.length ? `${jobs.length} task${jobs.length > 1 ? "s" : ""} running` : "";
+  $("jobPanel").innerHTML = jobs.map(j => {
+    const pct = j.found ? Math.min(100, Math.round(100 * j.done / j.found)) : 0;
+    const growing = j.listing && j.state === "running";
+    const tip = j.op === "trash" && j.found > 1000 && !j.cancelling
+      ? `<div class="jtip">Moving to .Trash copies every object. For large folders you don't need back, cancel and use Ctrl+Delete.</div>` : "";
+    return `<div class="jobcard">
+      <div class="jhead"><span class="jlabel" title="${esc(j.label || "")}">${esc(j.label || "Working")}</span>
+        <button data-cancel="${j.id}" ${j.cancelling ? "disabled" : ""}>${j.cancelling ? "Cancelling" : "Cancel"}</button></div>
+      <div class="bar${growing ? " growing" : ""}"><div style="width:${growing && !j.found ? 100 : pct}%"></div></div>
+      <div class="jstat">${esc(jobStatus(j))}</div>${tip}
+    </div>`;
   }).join("");
 }
-async function watchJob(id, label) {
-  activeJobs.set(id, { label, done: 0, total: null, message: "Starting..." });
+$("jobPanel").addEventListener("click", async ev => {
+  const id = ev.target.dataset.cancel; if (!id) return;
+  const j = activeJobs.get(id);
+  if (j) { j.cancelling = true; renderJobs(); }
+  try { await api("/api/cancel", {}, { id }); } catch (e) { toast(e.message, true); }
+});
+async function watchJob(id) {
+  activeJobs.set(id, { id, label: "", found: 0, done: 0, listing: true, phase: "Starting", state: "running" });
   renderJobs();
   try {
     for (;;) {
-      await new Promise(r => setTimeout(r, 350));
+      await new Promise(r => setTimeout(r, 400));
       let j;
       try { j = await api("/api/job", { id }); } catch (e) { return { state: "error", error: e.message }; }
-      activeJobs.set(id, { label, ...j });
+      activeJobs.set(id, j);
       renderJobs();
       if (j.state !== "running") return j;
     }
   } finally { activeJobs.delete(id); renderJobs(); }
+}
+// Tasks keep running on the server if the page is closed; pick them back up.
+async function reattachJobs() {
+  let r;
+  try { r = await api("/api/jobs"); } catch { return; }
+  for (const j of r.jobs) if (!activeJobs.has(j.id)) watchJob(j.id).then(finishJob);
 }
 
 function describe(items) {
@@ -666,6 +751,7 @@ function cutSelected() {
   state.clipboard = { root: state.root, fromPrefix: state.prefix, items };
   refreshRowClasses();
   toast(`Cut ${describe(items)}. Go to the destination folder and press Ctrl+V.`);
+  api("/api/warm", {}, { root: state.root }).catch(() => {});   // start move workers early
 }
 async function paste() {
   const c = state.clipboard; if (!c) return;
@@ -915,6 +1001,7 @@ window.addEventListener("hashchange", () => load());
   if (!location.hash && recent[0]) $("pathInput").value = recent[0];
 }
 load();
+reattachJobs();
 </script>
 </body>
 </html>
